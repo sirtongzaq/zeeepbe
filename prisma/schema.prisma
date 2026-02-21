@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//////////////////////////////////////////////////////
+// USER
+//////////////////////////////////////////////////////
+
+model User {
+  id         String  @id @default(uuid())
+  email      String  @unique
+  nickname   String?
+  bio        String?
+  avatarUrl  String?
+  isVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  otps          Otp[]
+  refreshTokens RefreshToken[]
+  messages      Message[]
+  chatMembers   ChatParticipant[]
+  friends       Friend[]          @relation("UserFriends")
+  friendOf      Friend[]          @relation("FriendOf")
+  chatRooms     ChatRoom[]
+  messageReads  MessageRead[]
+}
+
+//////////////////////////////////////////////////////
+// OTP LOGIN
+//////////////////////////////////////////////////////
+
+model Otp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+//////////////////////////////////////////////////////
+// REFRESH TOKEN
+//////////////////////////////////////////////////////
+
+model RefreshToken {
+  id        String @id @default(uuid())
+  tokenHash String
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+//////////////////////////////////////////////////////
+// FRIEND SYSTEM
+//////////////////////////////////////////////////////
+
+model Friend {
+  id String @id @default(uuid())
+
+  userId   String
+  friendId String
+
+  user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, friendId])
+}
+
+//////////////////////////////////////////////////////
+// CHAT ROOM
+//////////////////////////////////////////////////////
+
+model ChatRoom {
+  id      String  @id @default(uuid())
+  name    String?
+  isGroup Boolean @default(false)
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  participants ChatParticipant[]
+  messages     Message[]
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// CHAT PARTICIPANTS
+//////////////////////////////////////////////////////
+
+model ChatParticipant {
+  id         String @id @default(uuid())
+  userId     String
+  chatRoomId String
+  role       String @default("member") // admin | member
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+
+  joinedAt DateTime @default(now())
+
+  @@unique([userId, chatRoomId])
+}
+
+//////////////////////////////////////////////////////
+// MESSAGE
+//////////////////////////////////////////////////////
+
+model Message {
+  id         String @id @default(uuid())
+  chatRoomId String
+  senderId   String
+
+  content String
+  type    String @default("text") // text | image | file
+
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  sender   User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  reads MessageRead[]
+
+  createdAt DateTime @default(now())
+
+  @@index([chatRoomId])
+}
+
+//////////////////////////////////////////////////////
+// MESSAGE READ RECEIPT
+//////////////////////////////////////////////////////
+
+model MessageRead {
+  id        String @id @default(uuid())
+  messageId String
+  userId    String
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  readAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+}
