@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validationSchema } from './config/validation';
-import { AuthModule } from './auth/auth.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { FriendsModule } from './modules/friends/friends.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { FeedModule } from './modules/feed/feed.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -13,6 +17,10 @@ import configuration from './config/configuration';
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     AuthModule,
+    UsersModule,
+    FriendsModule,
+    ChatModule,
+    FeedModule,
   ],
 })
 export class AppModule {}
