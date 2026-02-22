@@ -7,7 +7,7 @@ import { PrismaService } from 'src/database/prisma.service';
 export class AuthService {
   constructor(
     private prisma: PrismaService,
-    private jwt: JwtService,
+    private jwtService: JwtService,
   ) {}
 
   async loginWithOtp(email: string) {
@@ -23,12 +23,12 @@ export class AuthService {
 
     const payload = { sub: user.id };
 
-    const accessToken = this.jwt.sign(payload, {
+    const accessToken = this.jwtService.sign(payload, {
       expiresIn: '15m',
       secret: process.env.JWT_SECRET,
     });
 
-    const refreshToken = this.jwt.sign(payload, {
+    const refreshToken = this.jwtService.sign(payload, {
       expiresIn: '7d',
       secret: process.env.JWT_REFRESH_SECRET,
     });
@@ -57,7 +57,7 @@ export class AuthService {
     for (const token of tokens) {
       const isMatch = await bcrypt.compare(refreshToken, token.tokenHash);
       if (isMatch) {
-        return this.jwt.sign({ sub: userId }, { expiresIn: '15m' });
+        return this.jwtService.sign({ sub: userId }, { expiresIn: '15m' });
       }
     }
 

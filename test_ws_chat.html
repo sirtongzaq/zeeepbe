@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Dev Chat</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: Arial;
+        padding: 20px;
+      }
+      input {
+        padding: 6px;
+        margin: 4px 0;
+        width: 100%;
+      }
+      button {
+        padding: 6px 12px;
+        margin-top: 5px;
+      }
+
+      .msg {
+        margin-bottom: 6px;
+      }
+      .system {
+        color: gray;
+      }
+
+      #messages {
+        border: 1px solid #ccc;
+        height: 400px;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .bubble {
+        max-width: 60%;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border-radius: 12px;
+      }
+
+      .me {
+        align-self: flex-end;
+        background-color: #4caf50;
+        color: white;
+      }
+
+      .other {
+        align-self: flex-start;
+        background-color: #e0e0e0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>💬 Dev Chat</h2>
+
+    <label>Access Token</label>
+    <input id="token" placeholder="Paste JWT token here" />
+
+    <label>Chat Room ID</label>
+    <input id="roomId" placeholder="Paste chatRoomId here" />
+
+    <button onclick="connect()">Connect</button>
+
+    <div id="messages"></div>
+
+    <input id="messageInput" placeholder="Type message..." />
+    <button onclick="sendMessage()">Send</button>
+
+    <script>
+      let socket;
+
+      const input = document.getElementById("messageInput");
+
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault(); // กัน form submit / newline
+          sendMessage();
+        }
+      });
+
+      function getUserIdFromToken(token) {
+        try {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          return payload.sub;
+        } catch {
+          return null;
+        }
+      }
+
+      function logMessage(text, type) {
+        const div = document.createElement("div");
+        div.className = `bubble ${type}`;
+        div.innerText = text;
+
+        const container = document.getElementById("messages");
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+      }
+
+      function connect() {
+        const token = document.getElementById("token").value;
+        const roomId = document.getElementById("roomId").value;
+
+        currentUserId = getUserIdFromToken(token);
+
+        if (!token || !roomId) {
+          alert("Token และ RoomId จำเป็นต้องใส่");
+          return;
+        }
+
+        socket = io("ws://localhost:3000", {
+          transports: ["websocket"],
+          auth: { token },
+        });
+
+        socket.on("connect", () => {
+          logMessage("🟢 Connected", "system");
+
+          socket.emit("join_room", { chatRoomId: roomId });
+        });
+
+        socket.on("connect_error", (err) => {
+          logMessage("❌ Connection error: " + err.message, "system");
+        });
+
+        socket.on("new_message", (data) => {
+          const isMe = data.senderId === currentUserId;
+
+          logMessage(data.content, isMe ? "me" : "other");
+          // logMessage(
+          //   `👤 ${data.sender?.nickname || data.senderId}: ${data.content}`,
+          // );
+        });
+
+        socket.on("message_read", (data) => {
+          logMessage(
+            `👀 Message ${data.messageId} read by ${data.userId}`,
+            "system",
+          );
+        });
+      }
+
+      function sendMessage() {
+        const message = document.getElementById("messageInput").value;
+        const roomId = document.getElementById("roomId").value;
+
+        if (!message || !socket) return;
+
+        socket.emit("send_message", {
+          chatRoomId: roomId,
+          content: message,
+        });
+
+        document.getElementById("messageInput").value = "";
+      }
+    </script>
+  </body>
+</html>

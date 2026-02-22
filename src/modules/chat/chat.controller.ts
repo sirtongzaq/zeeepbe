@@ -1,42 +1,38 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-} from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
-import { CreateChatDto } from './dto/create-chat.dto';
-import { UpdateChatDto } from './dto/update-chat.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { CreatePrivateRoomDto } from './dto/create-private-room.dto.ts';
+import { CreateGroupRoomDto } from './dto/create-group-room.dto.ts';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
-@Controller('chat')
+@Controller('chat/rooms')
+@UseGuards(AuthGuard('jwt'))
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(private chatService: ChatService) {}
 
-  @Post()
-  create(@Body() createChatDto: CreateChatDto) {
-    return this.chatService.create(createChatDto);
+  ////////////////////////////////////////////////
+  // Private Room
+  ////////////////////////////////////////////////
+
+  @Post('private')
+  createPrivate(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreatePrivateRoomDto,
+  ) {
+    console.log('Creating private room with friendId:', dto);
+    return this.chatService.createPrivateRoom(user.sub, dto.friendId);
   }
 
-  @Get()
-  findAll() {
-    return this.chatService.findAll();
-  }
+  ////////////////////////////////////////////////
+  // Group Room
+  ////////////////////////////////////////////////
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.chatService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateChatDto: UpdateChatDto) {
-    return this.chatService.update(+id, updateChatDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.chatService.remove(+id);
+  @Post('group')
+  createGroup(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateGroupRoomDto,
+  ) {
+    return this.chatService.createGroupRoom(user.sub, dto.name, dto.memberIds);
   }
 }
