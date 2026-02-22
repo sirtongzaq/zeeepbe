@@ -113,12 +113,15 @@ model ChatParticipant {
   chatRoomId String
   role       String @default("member") // admin | member
 
+  lastReadAt DateTime?
+
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
 
   joinedAt DateTime @default(now())
 
   @@unique([userId, chatRoomId])
+  @@index([chatRoomId])
 }
 
 //////////////////////////////////////////////////////
@@ -140,7 +143,7 @@ model Message {
 
   createdAt DateTime @default(now())
 
-  @@index([chatRoomId])
+  @@index([chatRoomId, createdAt])
 }
 
 //////////////////////////////////////////////////////

@@ -1,4 +1,12 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
@@ -34,5 +42,27 @@ export class ChatController {
     @Body() dto: CreateGroupRoomDto,
   ) {
     return this.chatService.createGroupRoom(user.sub, dto.name, dto.memberIds);
+  }
+
+  ////////////////////////////////////////////////
+  // Get My Rooms
+  ////////////////////////////////////////////////
+
+  @Get()
+  getMyRooms(@CurrentUser() user: JwtPayload) {
+    return this.chatService.getMyRooms(user.sub);
+  }
+
+  ////////////////////////////////////////////////
+  // Get Messages with Cursor Pagination
+  ////////////////////////////////////////////////
+
+  @Get(':roomId/messages')
+  getMessages(
+    @CurrentUser() user: JwtPayload,
+    @Param('roomId') roomId: string,
+    @Query('cursor') cursor: string | undefined,
+  ) {
+    return this.chatService.getMessages(user.sub, roomId, cursor);
   }
 }

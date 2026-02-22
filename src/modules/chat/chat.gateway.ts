@@ -136,17 +136,32 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   // read receipt
   ////////////////////////////////////////////////
 
+  // @SubscribeMessage('read_message')
+  // async readMessage(
+  //   @MessageBody('messageId') messageId: string,
+  //   @ConnectedSocket() socket: AuthenticatedSocket,
+  // ) {
+  //   const userId = socket.data.userId;
+
+  //   await this.chatService.markAsRead(userId, messageId);
+
+  //   this.server.to(socket.id).emit('message_read', {
+  //     messageId,
+  //     userId,
+  //   });
+  // }
+
   @SubscribeMessage('read_message')
   async readMessage(
-    @MessageBody('messageId') messageId: string,
+    @MessageBody('chatRoomId') chatRoomId: string,
     @ConnectedSocket() socket: AuthenticatedSocket,
   ) {
     const userId = socket.data.userId;
 
-    await this.chatService.markAsRead(userId, messageId);
+    await this.chatService.markRoomAsRead(userId, chatRoomId);
 
-    this.server.to(socket.id).emit('message_read', {
-      messageId,
+    this.server.to(chatRoomId).emit('message_read', {
+      chatRoomId,
       userId,
     });
   }

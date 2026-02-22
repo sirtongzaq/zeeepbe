@@ -69,18 +69,32 @@ export class ChatService {
   // mark as read
   //////////////////////////////////////////////////
 
-  async markAsRead(userId: string, messageId: string) {
-    return this.prisma.messageRead.upsert({
+  // async markAsRead(userId: string, messageId: string) {
+  //   return this.prisma.messageRead.upsert({
+  //     where: {
+  //       messageId_userId: {
+  //         messageId,
+  //         userId,
+  //       },
+  //     },
+  //     update: {},
+  //     create: {
+  //       messageId,
+  //       userId,
+  //     },
+  //   });
+  // }
+
+  async markRoomAsRead(userId: string, chatRoomId: string) {
+    await this.prisma.chatParticipant.update({
       where: {
-        messageId_userId: {
-          messageId,
+        userId_chatRoomId: {
           userId,
+          chatRoomId,
         },
       },
-      update: {},
-      create: {
-        messageId,
-        userId,
+      data: {
+        lastReadAt: new Date(),
       },
     });
   }
@@ -152,5 +166,79 @@ export class ChatService {
         participants: true,
       },
     });
+  }
+
+  //////////////////////////////////////////////////
+  // Get My Rooms
+  //////////////////////////////////////////////////
+  async getMyRooms(userId: string) {
+    const rooms = await this.prisma.chatParticipant.findMany({
+      where: { userId },
+      include: {
+        chatRoom: {
+          include: {
+            messages: {
+              take: 1,
+              orderBy: { createdAt: 'desc' },
+              include: { sender: true },
+            },
+          },
+        },
+      },
+    });
+
+    return Promise.all(
+      rooms.map(async (participant) => {
+        const { chatRoom, lastReadAt } = participant;
+
+        const unreadCount = await this.prisma.message.count({
+          where: {
+            chatRoomId: chatRoom.id,
+            createdAt: {
+              gt: lastReadAt ?? new Date(0),
+            },
+            senderId: { not: userId }, // ไม่นับของตัวเอง
+          },
+        });
+
+        return {
+          id: chatRoom.id,
+          name: chatRoom.name,
+          isGroup: chatRoom.isGroup,
+          lastMessage: chatRoom.messages[0] ?? null,
+          unreadCount,
+        };
+      }),
+    );
+  }
+
+  //////////////////////////////////////////////////
+  // Get Messages with Cursor Pagination
+  //////////////////////////////////////////////////
+
+  async getMessages(userId: string, roomId: string, cursor?: string) {
+    // validate ว่า user อยู่ใน room
+    await this.validateParticipant(userId, roomId);
+
+    const messages = await this.prisma.message.findMany({
+      where: { chatRoomId: roomId },
+      take: 20,
+      ...(cursor && {
+        skip: 1,
+        cursor: { id: cursor },
+      }),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        sender: {
+          select: { id: true, nickname: true, avatarUrl: true },
+        },
+      },
+    });
+
+    return {
+      data: messages,
+      nextCursor:
+        messages.length === 20 ? messages[messages.length - 1].id : null,
+    };
   }
 }
