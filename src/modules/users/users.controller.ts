@@ -5,7 +5,7 @@ import { AuthGuard } from '@nestjs/passport';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
-@Controller('profile')
+@Controller('users')
 export class UsersController {
   constructor(private usersService: UsersService) {}
 

@@ -33,57 +33,8 @@ export class ChatService {
   }
 
   //////////////////////////////////////////////////
-  // สร้าง Message
-  //////////////////////////////////////////////////
-
-  async createMessage(
-    userId: string,
-    chatRoomId: string,
-    content: string,
-    type: string = 'text',
-  ) {
-    await this.validateParticipant(userId, chatRoomId);
-
-    const message = await this.prisma.message.create({
-      data: {
-        senderId: userId,
-        chatRoomId,
-        content,
-        type,
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            nickname: true,
-            avatarUrl: true,
-          },
-        },
-      },
-    });
-
-    return message;
-  }
-
-  //////////////////////////////////////////////////
   // mark as read
   //////////////////////////////////////////////////
-
-  // async markAsRead(userId: string, messageId: string) {
-  //   return this.prisma.messageRead.upsert({
-  //     where: {
-  //       messageId_userId: {
-  //         messageId,
-  //         userId,
-  //       },
-  //     },
-  //     update: {},
-  //     create: {
-  //       messageId,
-  //       userId,
-  //     },
-  //   });
-  // }
 
   async markRoomAsRead(userId: string, chatRoomId: string) {
     await this.prisma.chatParticipant.update({
@@ -227,7 +178,7 @@ export class ChatService {
         skip: 1,
         cursor: { id: cursor },
       }),
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
       include: {
         sender: {
           select: { id: true, nickname: true, avatarUrl: true },
@@ -236,9 +187,134 @@ export class ChatService {
     });
 
     return {
-      data: messages,
+      messages,
       nextCursor:
         messages.length === 20 ? messages[messages.length - 1].id : null,
     };
+  }
+
+  /////////////////////////////////////////////////
+  // หา private room ระหว่าง userA กับ userB
+  /////////////////////////////////////////////////
+
+  async findPrivateRoom(userA: string, userB: string) {
+    const rooms = await this.prisma.chatRoom.findMany({
+      where: {
+        isGroup: false,
+        participants: {
+          some: { userId: userA },
+        },
+      },
+      include: {
+        participants: true,
+      },
+    });
+
+    return rooms.find(
+      (room) =>
+        room.participants.length === 2 &&
+        room.participants.some((p) => p.userId === userB),
+    );
+  }
+
+  /////////////////////////////////////////////////
+  // ถ้ามี private room อยู่แล้ว ให้ดึงห้องนั้นมาใช้เลย พร้อมกับข้อความล่าสุด 50 ข้อความ
+  /////////////////////////////////////////////////
+
+  async getExistingPrivateRoom(userId: string, targetUserId: string) {
+    const room = await this.findPrivateRoom(userId, targetUserId);
+
+    if (!room) return null;
+
+    const messages = await this.prisma.message.findMany({
+      where: { chatRoomId: room.id },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+
+    return { room, messages };
+  }
+
+  async sendPrivateMessage(data: {
+    senderId: string;
+    targetUserId: string;
+    content: string;
+    type: string;
+  }) {
+    const { senderId, targetUserId, content, type } = data;
+
+    let room = await this.findPrivateRoom(senderId, targetUserId);
+
+    if (!room) {
+      room = await this.prisma.chatRoom.create({
+        data: {
+          isGroup: false,
+          participants: {
+            create: [{ userId: senderId }, { userId: targetUserId }],
+          },
+        },
+        include: {
+          participants: true, // 👈 เพิ่มตรงนี้
+        },
+      });
+    }
+
+    return this.prisma.message.create({
+      data: {
+        chatRoomId: room.id,
+        senderId,
+        content,
+        type,
+      },
+    });
+  }
+
+  /////////////////////////////////////////////////
+  // ส่งข้อความในห้องแชท (ไม่ต้องสนใจว่าห้องนั้นเป็น private หรือ group)
+  /////////////////////////////////////////////////
+
+  async sendMessageToRoom(data: {
+    senderId: string;
+    chatRoomId: string;
+    content: string;
+    type: string;
+  }) {
+    const { senderId, chatRoomId, content, type } = data;
+    return this.prisma.message.create({
+      data: {
+        senderId,
+        chatRoomId,
+        content,
+        type,
+      },
+    });
+  }
+
+  /////////////////////////////////////////////////
+  // ดึงรายละเอียดห้องแชท (รวมถึงรายชื่อผู้เข้าร่วม)
+  /////////////////////////////////////////////////
+
+  async getRoomDetail(userId: string, roomId: string) {
+    await this.validateParticipant(userId, roomId);
+
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                nickname: true,
+                avatarUrl: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return room;
   }
 }

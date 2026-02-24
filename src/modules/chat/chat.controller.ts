@@ -1,18 +1,18 @@
 import {
   Controller,
-  Post,
-  Body,
   UseGuards,
   Get,
   Param,
   Query,
+  Post,
+  Body,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 import { CreatePrivateRoomDto } from './dto/create-private-room.dto.ts';
 import { CreateGroupRoomDto } from './dto/create-group-room.dto.ts';
-import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Controller('chat/rooms')
 @UseGuards(AuthGuard('jwt'))
@@ -64,5 +64,13 @@ export class ChatController {
     @Query('cursor') cursor: string | undefined,
   ) {
     return this.chatService.getMessages(user.sub, roomId, cursor);
+  }
+
+  @Get(':roomId')
+  getRoomInfo(
+    @CurrentUser() user: JwtPayload,
+    @Param('roomId') roomId: string,
+  ) {
+    return this.chatService.getRoomDetail(user.sub, roomId);
   }
 }

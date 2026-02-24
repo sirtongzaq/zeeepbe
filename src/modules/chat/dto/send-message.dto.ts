@@ -18,6 +18,10 @@ export class SendMessageDto {
 
   @IsString()
   @IsNotEmpty()
+  targetUserId: string;
+
+  @IsString()
+  @IsNotEmpty()
   content: string;
 
   @IsOptional()
