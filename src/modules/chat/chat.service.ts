@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { User } from '@prisma/client';
 import { PrismaService } from 'src/database/prisma.service';
 
 @Injectable()
@@ -128,6 +129,11 @@ export class ChatService {
       include: {
         chatRoom: {
           include: {
+            participants: {
+              include: {
+                user: true, // ✅ ดึงข้อมูล user
+              },
+            },
             messages: {
               take: 1,
               orderBy: { createdAt: 'desc' },
@@ -148,9 +154,22 @@ export class ChatService {
             createdAt: {
               gt: lastReadAt ?? new Date(0),
             },
-            senderId: { not: userId }, // ไม่นับของตัวเอง
+            senderId: { not: userId },
           },
         });
+
+        ////////////////////////////////////////////
+        // 🔥 หาอีกฝ่าย (กรณีไม่ใช่ group)
+        ////////////////////////////////////////////
+        let otherUser: User | null = null;
+
+        if (!chatRoom.isGroup) {
+          const otherParticipant = chatRoom.participants.find(
+            (p) => p.userId !== userId,
+          );
+
+          otherUser = otherParticipant?.user ?? null;
+        }
 
         return {
           id: chatRoom.id,
@@ -158,6 +177,7 @@ export class ChatService {
           isGroup: chatRoom.isGroup,
           lastMessage: chatRoom.messages[0] ?? null,
           unreadCount,
+          otherUser, // ✅ เพิ่มอันนี้
         };
       }),
     );
@@ -167,29 +187,47 @@ export class ChatService {
   // Get Messages with Cursor Pagination
   //////////////////////////////////////////////////
 
-  async getMessages(userId: string, roomId: string, cursor?: string) {
-    // validate ว่า user อยู่ใน room
+  async getMessages(
+    userId: string,
+    roomId: string,
+    cursor?: string,
+    limit = 20,
+  ) {
+    // check permission ก่อน
     await this.validateParticipant(userId, roomId);
 
     const messages = await this.prisma.message.findMany({
-      where: { chatRoomId: roomId },
-      take: 20,
+      where: {
+        chatRoomId: roomId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
       ...(cursor && {
+        cursor: {
+          id: cursor, // ถ้าใช้ id เป็น cursor
+        },
         skip: 1,
-        cursor: { id: cursor },
       }),
-      orderBy: { createdAt: 'asc' },
       include: {
         sender: {
-          select: { id: true, nickname: true, avatarUrl: true },
+          select: {
+            id: true,
+            nickname: true,
+            email: true,
+          },
         },
       },
     });
 
+    const nextCursor =
+      messages.length === limit ? messages[messages.length - 1].id : null;
+
     return {
       messages,
-      nextCursor:
-        messages.length === 20 ? messages[messages.length - 1].id : null,
+      nextCursor,
+      hasMore: !!nextCursor,
     };
   }
 
@@ -287,6 +325,9 @@ export class ChatService {
         content,
         type,
       },
+      include: {
+        sender: true, // ✅ สำคัญมาก
+      },
     });
   }
 
@@ -316,5 +357,27 @@ export class ChatService {
     });
 
     return room;
+  }
+
+  /////////////////////////////////////////////////
+  // ดึงรายชื่อ participant ในห้อง
+  /////////////////////////////////////////////////
+
+  async getParticipants(chatRoomId: string) {
+    return this.prisma.chatParticipant.findMany({
+      where: { chatRoomId },
+      select: {
+        userId: true,
+      },
+    });
+  }
+
+  async getParticipantIds(chatRoomId: string): Promise<string[]> {
+    const participants = await this.prisma.chatParticipant.findMany({
+      where: { chatRoomId },
+      select: { userId: true },
+    });
+
+    return participants.map((p) => p.userId);
   }
 }

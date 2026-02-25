@@ -9,8 +9,8 @@ async function bootstrap() {
   const allowedOrigins = [
     'http://localhost:5173',
     'https://localhost:5173',
-    'http://192.168.1.6:5173',
-    'https://192.168.1.6:5173',
+    'http://192.168.1.3:5173',
+    'https://192.168.1.3:5173',
   ];
   const app = await NestFactory.create(AppModule);
 

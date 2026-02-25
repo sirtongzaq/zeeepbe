@@ -39,12 +39,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   //////////////////////////////////////////////////////
 
   async handleConnection(socket: AuthenticatedSocket) {
-    console.log('---------------------------------------');
-    console.log('🔥 [WS] Incoming connection');
-
     try {
       let token = socket.handshake.auth?.token as string;
-      console.log('🔍 [WS] Token received', { token });
 
       if (!token || typeof token !== 'string') {
         throw new Error('Token missing');
@@ -60,13 +56,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
 
       socket.data.userId = payload.sub;
 
-      // 🔥 personal room
+      // ✅ Personal room (sync multi device)
       await socket.join(`user:${payload.sub}`);
 
-      console.log(`✅ [WS] User connected → userId=${payload.sub}`);
-      console.log(`🏠 [WS] Joined personal room → user:${payload.sub}`);
+      console.log(`✅ User connected → ${payload.sub}`);
     } catch (err) {
-      console.log('❌ [WS] Auth failed → disconnecting', err);
+      console.error('❌ WS Auth failed:', err);
       socket.disconnect();
     }
   }
@@ -82,24 +77,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   ) {
     const userId = socket.data.userId;
 
-    console.log('---------------------------------------');
-    console.log(`📥 [JOIN] user=${userId} room=${chatRoomId}`);
-
     if (!chatRoomId) {
       throw new WsException('chatRoomId required');
     }
 
     await this.chatService.validateParticipant(userId, chatRoomId);
 
-    await socket.join(chatRoomId);
+    // mark as read
+    await this.chatService.markRoomAsRead(userId, chatRoomId);
 
-    console.log(`✅ [JOIN] user=${userId} joined room=${chatRoomId}`);
+    // join actual message room
+    await socket.join(`room:${chatRoomId}`);
+
+    // 🔥 reset unread badge on all devices
+    this.server.to(`user:${userId}`).emit('room_read', {
+      chatRoomId,
+    });
 
     return { joined: true };
   }
 
   //////////////////////////////////////////////////////
-  // SEND MESSAGE (Lazy Private Room)
+  // SEND MESSAGE (Production Version)
   //////////////////////////////////////////////////////
 
   @SubscribeMessage('send_message')
@@ -112,28 +111,35 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
     },
     @ConnectedSocket() socket: AuthenticatedSocket,
   ) {
-    const userId = socket.data.userId;
-
-    console.log('---------------------------------------');
-    console.log('📤 [SEND] Payload received', dto);
-    console.log(`📩 [SEND] from=${userId} room=${dto.chatRoomId}`);
+    const senderId = socket.data.userId;
 
     if (!dto.chatRoomId || !dto.content) {
       throw new WsException('Invalid payload');
     }
 
+    // save message
     const message = await this.chatService.sendMessageToRoom({
-      senderId: userId,
+      senderId,
       chatRoomId: dto.chatRoomId,
       content: dto.content,
       type: dto.type ?? 'text',
     });
 
-    console.log(`📝 [DB] messageId=${message.id} room=${message.chatRoomId}`);
+    // 1️⃣ broadcast message to room
+    this.server.to(`room:${dto.chatRoomId}`).emit('new_message', message);
 
-    this.server.to(dto.chatRoomId).emit('new_message', message);
+    // 2️⃣ update sidebar for all participants
+    const participantIds = await this.chatService.getParticipantIds(
+      dto.chatRoomId,
+    );
 
-    console.log(`📡 [BROADCAST] room=${dto.chatRoomId}`);
+    participantIds.forEach((userId) => {
+      this.server.to(`user:${userId}`).emit('room_updated', {
+        chatRoomId: dto.chatRoomId,
+        lastMessage: message,
+        senderId,
+      });
+    });
 
     return message;
   }
@@ -149,20 +155,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   ) {
     const userId = socket.data.userId;
 
-    console.log('---------------------------------------');
-    console.log(`👁️ [READ] user=${userId} room=${chatRoomId}`);
-
     if (!chatRoomId) {
       throw new WsException('chatRoomId required');
     }
 
     await this.chatService.markRoomAsRead(userId, chatRoomId);
 
-    this.server.to(chatRoomId).emit('message_read', {
+    // update unread badge on all devices
+    this.server.to(`user:${userId}`).emit('room_read', {
+      chatRoomId,
+    });
+
+    // notify other users inside room
+    this.server.to(`room:${chatRoomId}`).emit('message_read', {
       chatRoomId,
       userId,
     });
-
-    console.log(`📡 [READ BROADCAST] room=${chatRoomId}`);
   }
 }

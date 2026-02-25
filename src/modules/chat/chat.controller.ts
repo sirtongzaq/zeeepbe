@@ -61,9 +61,15 @@ export class ChatController {
   getMessages(
     @CurrentUser() user: JwtPayload,
     @Param('roomId') roomId: string,
-    @Query('cursor') cursor: string | undefined,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.chatService.getMessages(user.sub, roomId, cursor);
+    return this.chatService.getMessages(
+      user.sub,
+      roomId,
+      cursor,
+      limit ? parseInt(limit) : undefined,
+    );
   }
 
   @Get(':roomId')
