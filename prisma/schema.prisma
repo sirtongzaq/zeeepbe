@@ -94,6 +94,8 @@ model ChatRoom {
   name    String?
   isGroup Boolean @default(false)
 
+  lastMessageAt DateTime?
+
   createdById String?
   createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -101,6 +103,7 @@ model ChatRoom {
   messages     Message[]
 
   createdAt DateTime @default(now())
+  @@index([lastMessageAt])
 }
 
 //////////////////////////////////////////////////////

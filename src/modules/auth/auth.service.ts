@@ -24,7 +24,7 @@ export class AuthService {
     const payload = { sub: user.id };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: '15m',
+      expiresIn: '30m',
       secret: process.env.JWT_SECRET,
     });
 
@@ -57,7 +57,7 @@ export class AuthService {
     for (const token of tokens) {
       const isMatch = await bcrypt.compare(refreshToken, token.tokenHash);
       if (isMatch) {
-        return this.jwtService.sign({ sub: userId }, { expiresIn: '15m' });
+        return this.jwtService.sign({ sub: userId }, { expiresIn: '30m' });
       }
     }
 

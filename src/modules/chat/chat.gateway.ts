@@ -137,6 +137,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
       this.server.to(`user:${userId}`).emit('room_updated', {
         chatRoomId: dto.chatRoomId,
         lastMessage: message,
+        lastMessageAt: message.createdAt,
         senderId,
       });
     });

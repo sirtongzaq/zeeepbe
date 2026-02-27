@@ -121,33 +121,47 @@ export class ChatService {
   }
 
   //////////////////////////////////////////////////
-  // Get My Rooms
+  // Get My Rooms (Production Grade)
   //////////////////////////////////////////////////
   async getMyRooms(userId: string) {
-    const rooms = await this.prisma.chatParticipant.findMany({
-      where: { userId },
+    const rooms = await this.prisma.chatRoom.findMany({
+      where: {
+        participants: {
+          some: { userId },
+        },
+      },
+      orderBy: [
+        { lastMessageAt: 'desc' }, // 🔥 เรียงจากข้อความล่าสุด
+        { createdAt: 'desc' }, // fallback กรณีไม่มีข้อความ
+      ],
       include: {
-        chatRoom: {
+        participants: {
           include: {
-            participants: {
-              include: {
-                user: true, // ✅ ดึงข้อมูล user
-              },
-            },
-            messages: {
-              take: 1,
-              orderBy: { createdAt: 'desc' },
-              include: { sender: true },
-            },
+            user: true,
           },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: { sender: true },
         },
       },
     });
 
     return Promise.all(
-      rooms.map(async (participant) => {
-        const { chatRoom, lastReadAt } = participant;
+      rooms.map(async (chatRoom) => {
+        ////////////////////////////////////////////
+        // หา participant ของ user นี้
+        ////////////////////////////////////////////
+        const myParticipant = chatRoom.participants.find(
+          (p) => p.userId === userId,
+        );
 
+        const lastReadAt = myParticipant?.lastReadAt ?? null;
+
+        ////////////////////////////////////////////
+        // unread count
+        ////////////////////////////////////////////
         const unreadCount = await this.prisma.message.count({
           where: {
             chatRoomId: chatRoom.id,
@@ -159,7 +173,7 @@ export class ChatService {
         });
 
         ////////////////////////////////////////////
-        // 🔥 หาอีกฝ่าย (กรณีไม่ใช่ group)
+        // หาอีกฝ่าย (ถ้าไม่ใช่ group)
         ////////////////////////////////////////////
         let otherUser: User | null = null;
 
@@ -177,12 +191,11 @@ export class ChatService {
           isGroup: chatRoom.isGroup,
           lastMessage: chatRoom.messages[0] ?? null,
           unreadCount,
-          otherUser, // ✅ เพิ่มอันนี้
+          otherUser,
         };
       }),
     );
   }
-
   //////////////////////////////////////////////////
   // Get Messages with Cursor Pagination
   //////////////////////////////////////////////////
@@ -273,42 +286,42 @@ export class ChatService {
     return { room, messages };
   }
 
-  async sendPrivateMessage(data: {
-    senderId: string;
-    targetUserId: string;
-    content: string;
-    type: string;
-  }) {
-    const { senderId, targetUserId, content, type } = data;
+  // async sendPrivateMessage(data: {
+  //   senderId: string;
+  //   targetUserId: string;
+  //   content: string;
+  //   type: string;
+  // }) {
+  //   const { senderId, targetUserId, content, type } = data;
 
-    let room = await this.findPrivateRoom(senderId, targetUserId);
+  //   let room = await this.findPrivateRoom(senderId, targetUserId);
 
-    if (!room) {
-      room = await this.prisma.chatRoom.create({
-        data: {
-          isGroup: false,
-          participants: {
-            create: [{ userId: senderId }, { userId: targetUserId }],
-          },
-        },
-        include: {
-          participants: true, // 👈 เพิ่มตรงนี้
-        },
-      });
-    }
+  //   if (!room) {
+  //     room = await this.prisma.chatRoom.create({
+  //       data: {
+  //         isGroup: false,
+  //         participants: {
+  //           create: [{ userId: senderId }, { userId: targetUserId }],
+  //         },
+  //       },
+  //       include: {
+  //         participants: true, // 👈 เพิ่มตรงนี้
+  //       },
+  //     });
+  //   }
 
-    return this.prisma.message.create({
-      data: {
-        chatRoomId: room.id,
-        senderId,
-        content,
-        type,
-      },
-    });
-  }
+  //   return this.prisma.message.create({
+  //     data: {
+  //       chatRoomId: room.id,
+  //       senderId,
+  //       content,
+  //       type,
+  //     },
+  //   });
+  // }
 
   /////////////////////////////////////////////////
-  // ส่งข้อความในห้องแชท (ไม่ต้องสนใจว่าห้องนั้นเป็น private หรือ group)
+  // ส่งข้อความในห้องแชท (Production Grade)
   /////////////////////////////////////////////////
 
   async sendMessageToRoom(data: {
@@ -318,17 +331,29 @@ export class ChatService {
     type: string;
   }) {
     const { senderId, chatRoomId, content, type } = data;
-    return this.prisma.message.create({
-      data: {
-        senderId,
-        chatRoomId,
-        content,
-        type,
-      },
-      include: {
-        sender: true, // ✅ สำคัญมาก
-      },
-    });
+
+    const now = new Date();
+
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          senderId,
+          chatRoomId,
+          content,
+          type,
+        },
+        include: {
+          sender: true,
+        },
+      }),
+
+      this.prisma.chatRoom.update({
+        where: { id: chatRoomId },
+        data: { lastMessageAt: now }, // 🔥 สำคัญมาก
+      }),
+    ]);
+
+    return message;
   }
 
   /////////////////////////////////////////////////
