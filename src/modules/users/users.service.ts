@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UploadService } from '../upload/upload.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadService: UploadService,
+  ) {}
 
   // 👀 View Profile (ของตัวเอง)
   async getMyProfile(userId: string) {
@@ -13,7 +17,7 @@ export class UsersService {
       select: {
         id: true,
         email: true,
-        nickname: true,
+        username: true,
         avatarUrl: true,
         bio: true,
         createdAt: true,
@@ -31,7 +35,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         id: true,
-        nickname: true,
+        username: true,
         avatarUrl: true,
         bio: true,
       },
@@ -50,17 +54,22 @@ export class UsersService {
 
     if (!user) throw new NotFoundException('User not found');
 
+    // 🔐 Verify avatarUrl ถ้ามีการส่งมา
+    if (dto.avatarUrl) {
+      this.uploadService.validateAvatarUrl(dto.avatarUrl, userId);
+    }
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
-        nickname: dto.nickname,
+        username: dto.username,
         avatarUrl: dto.avatarUrl,
         bio: dto.bio,
       },
       select: {
         id: true,
         email: true,
-        nickname: true,
+        username: true,
         avatarUrl: true,
         bio: true,
       },

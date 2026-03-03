@@ -227,7 +227,7 @@ export class ChatService {
         sender: {
           select: {
             id: true,
-            nickname: true,
+            username: true,
             email: true,
           },
         },
@@ -371,7 +371,7 @@ export class ChatService {
             user: {
               select: {
                 id: true,
-                nickname: true,
+                username: true,
                 avatarUrl: true,
                 email: true,
               },

@@ -4,7 +4,7 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  nickname?: string;
+  username?: string;
 
   @IsOptional()
   @IsString()
@@ -12,6 +12,6 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(160)
+  @MaxLength(255)
   bio?: string;
 }
