@@ -149,28 +149,42 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   // READ RECEIPT
   //////////////////////////////////////////////////////
 
-  @SubscribeMessage('read_message')
-  async readMessage(
+  // @SubscribeMessage('read_message')
+  // async readMessage(
+  //   @MessageBody('chatRoomId') chatRoomId: string,
+  //   @ConnectedSocket() socket: AuthenticatedSocket,
+  // ) {
+  //   const userId = socket.data.userId;
+
+  //   if (!chatRoomId) {
+  //     throw new WsException('chatRoomId required');
+  //   }
+
+  //   await this.chatService.markRoomAsRead(userId, chatRoomId);
+
+  //   // update unread badge on all devices
+  //   this.server.to(`user:${userId}`).emit('room_read', {
+  //     chatRoomId,
+  //   });
+
+  //   // notify other users inside room
+  //   this.server.to(`room:${chatRoomId}`).emit('message_read', {
+  //     chatRoomId,
+  //     userId,
+  //   });
+  // }
+
+  @SubscribeMessage('mark_read')
+  async markRead(
     @MessageBody('chatRoomId') chatRoomId: string,
     @ConnectedSocket() socket: AuthenticatedSocket,
   ) {
     const userId = socket.data.userId;
 
-    if (!chatRoomId) {
-      throw new WsException('chatRoomId required');
-    }
-
     await this.chatService.markRoomAsRead(userId, chatRoomId);
 
-    // update unread badge on all devices
     this.server.to(`user:${userId}`).emit('room_read', {
       chatRoomId,
-    });
-
-    // notify other users inside room
-    this.server.to(`room:${chatRoomId}`).emit('message_read', {
-      chatRoomId,
-      userId,
     });
   }
 }

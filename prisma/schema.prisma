@@ -13,7 +13,7 @@ datasource db {
 model User {
   id         String  @id @default(uuid())
   email      String  @unique
-  username   String?
+  username   String? @unique
   bio        String?
   avatarUrl  String?
   isVerified Boolean @default(false)
@@ -103,6 +103,7 @@ model ChatRoom {
   messages     Message[]
 
   createdAt DateTime @default(now())
+
   @@index([lastMessageAt])
 }
 
