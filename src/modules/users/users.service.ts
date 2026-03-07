@@ -77,4 +77,78 @@ export class UsersService {
 
     return updated;
   }
+
+  async searchUsers(
+    currentUserId: string,
+    query?: string,
+    page = 1,
+    limit = 20,
+  ) {
+    page = Math.max(page, 1);
+    limit = Math.min(limit, 50);
+
+    const skip = (page - 1) * limit;
+    const keyword = query?.trim();
+
+    const where = {
+      id: { not: currentUserId },
+      ...(keyword && {
+        OR: [
+          {
+            username: {
+              contains: keyword,
+              mode: 'insensitive' as const,
+            },
+          },
+          {
+            email: {
+              contains: keyword,
+              mode: 'insensitive' as const,
+            },
+          },
+        ],
+      }),
+    };
+
+    const [users, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          avatarUrl: true,
+          bio: true,
+        },
+        take: limit,
+        skip,
+        orderBy: {
+          username: 'asc',
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    if (!users.length) {
+      return {
+        data: [],
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    }
+
+    return {
+      data: users,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 }

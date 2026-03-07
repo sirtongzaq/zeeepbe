@@ -1,4 +1,12 @@
-import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Param,
+  Body,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UsersService } from './users.service';
 import { AuthGuard } from '@nestjs/passport';
@@ -18,7 +26,7 @@ export class UsersController {
 
   // 🌍 ดูโปรไฟล์ public
   @UseGuards(AuthGuard('jwt'))
-  @Get(':id')
+  @Get('profile/:id')
   getPublic(@Param('id') id: string) {
     return this.usersService.getPublicProfile(id);
   }
@@ -28,5 +36,22 @@ export class UsersController {
   @Patch()
   update(@CurrentUser() user: JwtPayload, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(user.sub, dto);
+  }
+
+  // 🔍 Search Users
+  @UseGuards(AuthGuard('jwt'))
+  @Get('search')
+  searchUsers(
+    @CurrentUser() user: JwtPayload,
+    @Query('q') q?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.usersService.searchUsers(
+      user.sub,
+      q,
+      Number(page),
+      Number(limit),
+    );
   }
 }
