@@ -13,27 +13,39 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import type { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 import { CreatePrivateRoomDto } from './dto/create-private-room.dto.ts';
 import { CreateGroupRoomDto } from './dto/create-group-room.dto.ts';
+import { ChatGateway } from './chat.gateway';
 
 @Controller('chat/rooms')
 @UseGuards(AuthGuard('jwt'))
 export class ChatController {
-  constructor(private chatService: ChatService) {}
+  constructor(
+    private chatService: ChatService,
+    private chatGateway: ChatGateway,
+  ) {}
 
   ////////////////////////////////////////////////
-  // Private Room
+  // Create Private Room
   ////////////////////////////////////////////////
 
   @Post('private')
-  createPrivate(
+  async createPrivate(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreatePrivateRoomDto,
   ) {
-    console.log('Creating private room with friendId:', dto);
-    return this.chatService.createPrivateRoom(user.sub, dto.friendId);
+    const room = await this.chatService.createPrivateRoom(
+      user.sub,
+      dto.friendId,
+    );
+
+    const participantIds = room.participants.map((p) => p.userId);
+
+    await this.chatGateway.emitRoomCreated(room.id, participantIds);
+
+    return room;
   }
 
   ////////////////////////////////////////////////
-  // Group Room
+  // Create Group Room
   ////////////////////////////////////////////////
 
   @Post('group')
@@ -54,7 +66,7 @@ export class ChatController {
   }
 
   ////////////////////////////////////////////////
-  // Get Messages with Cursor Pagination
+  // Get Messages
   ////////////////////////////////////////////////
 
   @Get(':roomId/messages')
@@ -68,9 +80,13 @@ export class ChatController {
       user.sub,
       roomId,
       cursor,
-      limit ? parseInt(limit) : undefined,
+      limit ? parseInt(limit) : 20,
     );
   }
+
+  ////////////////////////////////////////////////
+  // Get Room Detail
+  ////////////////////////////////////////////////
 
   @Get(':roomId')
   getRoomInfo(

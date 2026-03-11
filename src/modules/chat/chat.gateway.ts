@@ -6,11 +6,12 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayInit,
+  WsException,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { WsException } from '@nestjs/websockets';
 import { ChatService } from './chat.service';
+import { ChatEvents } from './chat.events';
 import type { AuthenticatedSocket } from 'src/common/interfaces/auth-socket.interface';
 import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
@@ -31,7 +32,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   //////////////////////////////////////////////////////
 
   afterInit() {
-    console.log('🔌 [WS] Gateway Initialized');
+    console.log('🔌 [WS] Chat Gateway Initialized');
   }
 
   //////////////////////////////////////////////////////
@@ -56,7 +57,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
 
       socket.data.userId = payload.sub;
 
-      // ✅ Personal room (sync multi device)
+      // personal room (multi device sync)
       await socket.join(`user:${payload.sub}`);
 
       console.log(`✅ User connected → ${payload.sub}`);
@@ -86,19 +87,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
     // mark as read
     await this.chatService.markRoomAsRead(userId, chatRoomId);
 
-    // join actual message room
     await socket.join(`room:${chatRoomId}`);
 
-    // 🔥 reset unread badge on all devices
-    this.server.to(`user:${userId}`).emit('room_read', {
+    // notify other users that this user read messages
+    this.server.to(`room:${chatRoomId}`).emit(ChatEvents.MESSAGE_READ, {
       chatRoomId,
+      userId,
     });
 
     return { joined: true };
   }
 
   //////////////////////////////////////////////////////
-  // SEND MESSAGE (Production Version)
+  // SEND MESSAGE
   //////////////////////////////////////////////////////
 
   @SubscribeMessage('send_message')
@@ -117,7 +118,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
       throw new WsException('Invalid payload');
     }
 
+    /////////////////////////////////////////////
     // save message
+    /////////////////////////////////////////////
+
     const message = await this.chatService.sendMessageToRoom({
       senderId,
       chatRoomId: dto.chatRoomId,
@@ -125,16 +129,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
       type: dto.type ?? 'text',
     });
 
-    // 1️⃣ broadcast message to room
-    this.server.to(`room:${dto.chatRoomId}`).emit('new_message', message);
+    /////////////////////////////////////////////
+    // broadcast message
+    /////////////////////////////////////////////
 
-    // 2️⃣ update sidebar for all participants
+    this.server
+      .to(`room:${dto.chatRoomId}`)
+      .emit(ChatEvents.MESSAGE_RECEIVED, message);
+
+    /////////////////////////////////////////////
+    // update room sidebar
+    /////////////////////////////////////////////
+
     const participantIds = await this.chatService.getParticipantIds(
       dto.chatRoomId,
     );
 
     participantIds.forEach((userId) => {
-      this.server.to(`user:${userId}`).emit('room_updated', {
+      this.server.to(`user:${userId}`).emit(ChatEvents.ROOM_UPDATED, {
         chatRoomId: dto.chatRoomId,
         lastMessage: message,
         lastMessageAt: message.createdAt,
@@ -146,33 +158,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   }
 
   //////////////////////////////////////////////////////
-  // READ RECEIPT
+  // MARK READ
   //////////////////////////////////////////////////////
-
-  // @SubscribeMessage('read_message')
-  // async readMessage(
-  //   @MessageBody('chatRoomId') chatRoomId: string,
-  //   @ConnectedSocket() socket: AuthenticatedSocket,
-  // ) {
-  //   const userId = socket.data.userId;
-
-  //   if (!chatRoomId) {
-  //     throw new WsException('chatRoomId required');
-  //   }
-
-  //   await this.chatService.markRoomAsRead(userId, chatRoomId);
-
-  //   // update unread badge on all devices
-  //   this.server.to(`user:${userId}`).emit('room_read', {
-  //     chatRoomId,
-  //   });
-
-  //   // notify other users inside room
-  //   this.server.to(`room:${chatRoomId}`).emit('message_read', {
-  //     chatRoomId,
-  //     userId,
-  //   });
-  // }
 
   @SubscribeMessage('mark_read')
   async markRead(
@@ -181,10 +168,53 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayInit {
   ) {
     const userId = socket.data.userId;
 
+    if (!chatRoomId) {
+      throw new WsException('chatRoomId required');
+    }
+
     await this.chatService.markRoomAsRead(userId, chatRoomId);
 
-    this.server.to(`user:${userId}`).emit('room_read', {
+    this.server.to(`room:${chatRoomId}`).emit(ChatEvents.MESSAGE_READ, {
       chatRoomId,
+      userId,
     });
+  }
+
+  //////////////////////////////////////////////////////
+  // TYPING EVENT
+  //////////////////////////////////////////////////////
+
+  @SubscribeMessage('typing')
+  typing(
+    @MessageBody()
+    payload: {
+      chatRoomId: string;
+      isTyping: boolean;
+    },
+    @ConnectedSocket() socket: AuthenticatedSocket,
+  ) {
+    const userId = socket.data.userId;
+
+    if (!payload.chatRoomId) {
+      throw new WsException('chatRoomId required');
+    }
+
+    socket.to(`room:${payload.chatRoomId}`).emit(ChatEvents.TYPING, {
+      chatRoomId: payload.chatRoomId,
+      userId,
+      isTyping: payload.isTyping,
+    });
+  }
+
+  //////////////////////////////////////////////////////
+  // EMIT ROOM CREATED (call from controller/service)
+  //////////////////////////////////////////////////////
+
+  async emitRoomCreated(roomId: string, participantIds: string[]) {
+    for (const userId of participantIds) {
+      const room = await this.chatService.buildRoomForUser(roomId, userId);
+
+      this.server.to(`user:${userId}`).emit(ChatEvents.ROOM_CREATED, room);
+    }
   }
 }
